@@ -1,9 +1,10 @@
 [package]
 name = "bal-save"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
+Inflector = "0.11.4"
 eframe = "0.31.1"
 egui = "0.31.1"
 flate2 = "1.1.0"

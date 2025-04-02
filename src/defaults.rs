@@ -1,4 +1,3 @@
-
 pub const JOKERS: [(&str, bool, bool, bool); 150] = [
     // Name, alerted, discovered, unlocked
     ("j_cartomancer", false, false, false),
@@ -153,7 +152,6 @@ pub const JOKERS: [(&str, bool, bool, bool); 150] = [
     ("j_green_joker", false, false, false),
 ];
 
-
 pub const VOUCHERS: [(&str, bool, bool, bool); 32] = [
     // Name, alerted, discovered, unlocked
     ("v_blank", false, false, false),
@@ -190,7 +188,6 @@ pub const VOUCHERS: [(&str, bool, bool, bool); 32] = [
     ("v_money_tree", false, false, false),
 ];
 
-
 pub const DECKS: [(&str, bool, bool, bool); 16] = [
     // Name, alerted, discovered, unlocked
     ("b_ghost", false, false, false),
@@ -210,7 +207,6 @@ pub const DECKS: [(&str, bool, bool, bool); 16] = [
     ("b_painted", false, false, false),
     ("b_yellow", false, false, false),
 ];
-
 
 pub const CARDS: [(&str, bool, bool, bool); 52] = [
     ("c_ouija", false, false, false),
@@ -267,12 +263,11 @@ pub const CARDS: [(&str, bool, bool, bool); 52] = [
     ("c_hermit", false, false, false),
 ];
 
-
-pub const ENCHANCEMENTS : [(&str, bool, bool, bool); 5] = [
+pub const ENCHANCEMENTS: [(&str, bool, bool, bool); 5] = [
     // Name, alerted, discovered, unlocked
     ("e_holo", false, false, false),
     ("e_polychrome", false, false, false),
     ("e_base", false, false, false),
     ("e_negative", false, false, false),
     ("e_foil", false, false, false),
-    ];
+];

@@ -1,24 +1,30 @@
-use egui::Context;
-use std::future::Future;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::io::Read;
 use crate::helpers::LuaContext;
 use crate::helpers::Meta;
+use crate::helpers::TabState;
+use egui::Context;
+use inflector::Inflector;
+use std::future::Future;
+use std::io::Read;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct MyApp {
     text_channel: (Sender<String>, Receiver<String>),
+    meta_channel: (Sender<Meta>, Receiver<Meta>),
     save_text: String,
     meta: Option<Meta>,
-    test: bool,
+    // test: bool,
+    tab: TabState,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
             text_channel: channel(),
+            meta_channel: channel(),
             save_text: "".into(),
             meta: None,
-            test: false,
+            tab: TabState::None,
+            // test: false,
         }
     }
 }
@@ -37,99 +43,216 @@ impl eframe::App for MyApp {
             self.save_text = text;
         }
 
+        if let Ok(meta) = self.meta_channel.1.try_recv() {
+            self.meta = Some(meta);
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                
-                ui.text_edit_multiline(&mut self.save_text);
-                ui.checkbox(&mut self.test, "I am a checkbox")
-                
-                // ui.checkbox(checked, text)
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.tab == TabState::None, "Open File")
+                    .clicked()
+                {
+                    self.tab = TabState::None;
+                }
+                if ui
+                    .selectable_label(self.tab == TabState::Editor, "Editor")
+                    .clicked()
+                {
+                    self.tab = TabState::Editor;
+                }
+                if ui
+                    .selectable_label(self.tab == TabState::Settings, "Settings")
+                    .clicked()
+                {
+                    self.tab = TabState::Settings;
+                }
+                if ui
+                    .selectable_label(self.tab == TabState::Help, "Help")
+                    .clicked()
+                {
+                    self.tab = TabState::Help;
+                }
             });
-            // a simple button opening the dialog
-            if ui.button("📂 Open text file").clicked() {
-                let sender = self.text_channel.0.clone();
-                let task = rfd::AsyncFileDialog::new().pick_file();
-                // Context is wrapped in an Arc so it's cheap to clone as per:
-                // > Context is cheap to clone, and any clones refers to the same mutable data (Context uses refcounting internally).
-                // Taken from https://docs.rs/egui/0.24.1/egui/struct.Context.html
-                let ctx = ui.ctx().clone();
-                execute(async move {
-                    
-                    let file = task.await;
-                    if let Some(file) = file {
-                        let text = file.read().await;
-                        let lua_context = LuaContext::new();
-                        let _ = sender.send(decompress_data(text.clone()).unwrap());
-                        ctx.request_repaint();
 
+            match self.tab {
+                TabState::None => {
+                    if ui.button("📂 Open text file").clicked() {
+                        let sender = self.text_channel.0.clone();
+                        let meta_sender = self.meta_channel.0.clone();
+                        let task = rfd::AsyncFileDialog::new().pick_file();
+                        // Context is wrapped in an Arc so it's cheap to clone as per:
+                        // > Context is cheap to clone, and any clones refers to the same mutable data (Context uses refcounting internally).
+                        // Taken from https://docs.rs/egui/0.24.1/egui/struct.Context.html
+                        let ctx = ui.ctx().clone();
+                        self.tab = TabState::Editor;
+                        execute(async move {
+                            let file = task.await;
+                            if let Some(file) = file {
+                                let text = file.read().await;
+                                let lua_context = LuaContext::new();
+                                let _ = sender.send(decompress_data(text.clone()).unwrap());
+                                ctx.request_repaint();
 
-                        let entire_file_table = lua_context.data_as_table(text, "map_table").unwrap();
+                                let meta = Meta::from_lua_table(lua_context, text);
 
-                        let alerted = lua_context.access_subtable(&entire_file_table, "alerted").unwrap();
-                        let discovered = lua_context.access_subtable(&entire_file_table, "discovered").unwrap();
-                        let unlocked = lua_context.access_subtable(&entire_file_table, "unlocked").unwrap();
+                                // let alerted = lua_context.access_subtable(&entire_file_table, "alerted").unwrap();
+                                // let discovered = lua_context.access_subtable(&entire_file_table, "discovered").unwrap();
+                                // let unlocked = lua_context.access_subtable(&entire_file_table, "unlocked").unwrap();
 
-                        for pair in alerted.pairs::<String, bool>() {
-                            match pair {
-                                // Ok((key, value)) => {
-                                //     if key.starts_with("b_") && !key.starts_with("b_cry_") && !key.starts_with("b_mp_") && !key.starts_with("b_mtg_") {
-                                //         println!("{}: {}", key, value);
+                                // for pair in alerted.pairs::<String, bool>() {
+                                //     match pair {
+
+                                //         Ok((key, value)) => {
+                                //             let start = "e_";
+                                //             let cry = start.to_string() + "cry_";
+                                //             let mp = start.to_string() + "mp_";
+                                //             let mtg = start.to_string() + "mtg_";
+                                //             let alerted_val = value;
+                                //             let discovered_val = discovered.get(key.clone()).unwrap_or(false);
+                                //             let unlocked_val = unlocked.get(key.clone()).unwrap_or(false);
+
+                                //             if key.starts_with(start) && !key.starts_with(&cry) && !key.starts_with(&mp) && !key.starts_with(&mtg) {
+                                //                 println!("(\"{}\", {}, {}, {}),", key, alerted_val, discovered_val, unlocked_val);
+                                //             }
+
+                                //             // e_
+
+                                //             // j_
+                                //             // v_
+                                //             // b_
+                                //             // c_
+
+                                //         }
+
+                                //         Err(err) => eprintln!("Error iterating over alerted pairs: {}", err),
                                 //     }
-                                Ok((key, value)) => {
-                                    let start = "e_";
-                                    let cry = start.to_string() + "cry_";
-                                    let mp = start.to_string() + "mp_";
-                                    let mtg = start.to_string() + "mtg_";
-                                    let alerted_val = value;
-                                    let discovered_val = discovered.get(key.clone()).unwrap_or(false);
-                                    let unlocked_val = unlocked.get(key.clone()).unwrap_or(false);
+                                // }
 
-                                    if key.starts_with(start) && !key.starts_with(&cry) && !key.starts_with(&mp) && !key.starts_with(&mtg) {
-                                        println!("(\"{}\", {}, {}, {}),", key, alerted_val, discovered_val, unlocked_val);
-                                    }
-
-                                    
-                                    
-                                    // e_
-
-
-                                    // j_
-                                    // v_
-                                    // b_
-                                    // c_
-                                
-                                }
-
-                                    
-                                Err(err) => eprintln!("Error iterating over alerted pairs: {}", err),
+                                let _ = meta_sender.send(meta);
                             }
+                        });
+                    }
+
+                    if ui.button("💾 Save text to file").clicked() {
+                        let task = rfd::AsyncFileDialog::new().save_file();
+                        let contents = self.save_text.clone();
+                        execute(async move {
+                            let file = task.await;
+                            if let Some(file) = file {
+                                _ = file.write(contents.as_bytes()).await;
+                            }
+                        });
+                    }
+                }
+
+                TabState::Editor => {
+                    ui.label("Editor");
+                    ui.horizontal(|ui| {
+                        ui.label("Jokers");
+
+                        ui.separator();
+
+                        ui.label("Vouchers");
+                    });
+
+                    match &mut self.meta {
+                        Some(meta) => {
+                            if ui.button("Unlock All Jokers").clicked() {
+                                meta.unlock_all_jokers();
+                            }
+
+                            if ui.button("Unlock All Vouchers").clicked() {
+                                meta.unlock_all_vouchers();
+                            }
+
+                            if ui.button("Unlock All Cards").clicked() {
+                                meta.unlock_all_cards();
+                            }
+
+                            if ui.button("Unlock All Enchantments").clicked() {
+                                meta.unlock_all_enchancements();
+                            }
+
+                            if ui.button("Unlock All Decks").clicked() {
+                                meta.unlock_all_decks();
+                            }
+
+                            egui::containers::ScrollArea::vertical()
+                                .max_height(200.0)
+                                .max_width(2000.0)
+                                .id_salt(1)
+                                .show(ui, |ui| {
+                                    let mut joker_names = meta.get_joker_names();
+                                    joker_names.sort();
+                                    for joker_name in joker_names.iter() {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!(
+                                                "{}",
+                                                &joker_name[2..].to_title_case()
+                                            ));
+                                            let joker = meta.get_joker(&joker_name);
+
+                                            let joker_val = joker.unwrap();
+
+                                            ui.checkbox(&mut joker_val.alerted, "Alerted");
+                                            ui.checkbox(&mut joker_val.discovered, "Discovered");
+                                            ui.checkbox(&mut joker_val.unlocked, "Unlocked");
+                                        });
+                                    }
+                                });
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.add_space(10.0);
+                            egui::containers::ScrollArea::vertical()
+                                .max_height(200.0)
+                                .max_width(2000.0)
+                                .id_salt(2)
+                                .show(ui, |ui| {
+                                    let mut voucher_names = meta.get_voucher_names();
+                                    voucher_names.sort();
+                                    for voucher_name in voucher_names.iter() {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!(
+                                                "{}",
+                                                &voucher_name[2..].to_title_case()
+                                            ));
+                                            let voucher = meta.get_voucher(&voucher_name);
+
+                                            let voucher_val = voucher.unwrap();
+
+                                            ui.checkbox(&mut voucher_val.alerted, "Alerted");
+                                            ui.checkbox(&mut voucher_val.discovered, "Discovered");
+                                            ui.checkbox(&mut voucher_val.unlocked, "Unlocked");
+                                        });
+                                    }
+                                });
                         }
-
-
-
+                        None => {
+                            ui.label("No Meta yet");
+                        }
                     }
-                });
+                }
+
+                TabState::Settings => {
+                    ui.label("Settings");
+                    ui.horizontal(|ui| {
+                        ui.label("No Settings yet");
+                    });
+                }
+
+                TabState::Help => {
+                    ui.label("Help");
+                    ui.horizontal(|ui| {
+                        ui.label("No Help yet");
+                    });
+                }
             }
 
-            if ui.button("💾 Save text to file").clicked() {
-                let task = rfd::AsyncFileDialog::new().save_file();
-                let contents = self.save_text.clone();
-                execute(async move {
-                    let file = task.await;
-                    if let Some(file) = file {
-                        _ = file.write(contents.as_bytes()).await;
-                    }
-                });
-            }
+            // a simple button opening the dialog
         });
     }
 }
-
-
-
-
-
-
 
 fn decompress_data(data: Vec<u8>) -> Result<String, std::io::Error> {
     let mut decoder = flate2::read::DeflateDecoder::new(&data[..]);
@@ -137,7 +260,7 @@ fn decompress_data(data: Vec<u8>) -> Result<String, std::io::Error> {
     decoder.read_to_string(&mut s)?;
     // let lua = Lua::new();
     // let val: Value = lua.load(&s).eval().unwrap();
-    
+
     // lua.globals().set("map_table", &val).unwrap();
 
     // let alerted_table = access_subtable(val, "alerted").unwrap();
@@ -148,9 +271,6 @@ fn decompress_data(data: Vec<u8>) -> Result<String, std::io::Error> {
 
     Ok(s)
 }
-
-
-
 
 fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
     // this is stupid... use any executor of your choice instead
@@ -177,7 +297,6 @@ fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
 // hand_usage      table: 0x7e12dc0233d0
 // joker_usage     table: 0x7e12dc0231d0
 // Table(Ref(0x7e12dc023150))
-
 
 // Save Table
 // STATE   5

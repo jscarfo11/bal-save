@@ -1,4 +1,3 @@
-
 use bal_save::MyApp;
 
 fn main() -> eframe::Result<()> {
