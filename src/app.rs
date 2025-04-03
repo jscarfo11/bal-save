@@ -177,9 +177,9 @@ impl eframe::App for MyApp {
                             if ui.button("Unlock All Decks").clicked() {
                                 meta.unlock_all_decks();
                             }
-
+                            let window_size = ctx.screen_rect().size();
                             egui::containers::ScrollArea::vertical()
-                                .max_height(200.0)
+                                .max_height(window_size.y * 0.2)
                                 .max_width(2000.0)
                                 .id_salt(1)
                                 .show(ui, |ui| {
@@ -205,7 +205,7 @@ impl eframe::App for MyApp {
                             ui.separator();
                             ui.add_space(10.0);
                             egui::containers::ScrollArea::vertical()
-                                .max_height(200.0)
+                                .max_height(window_size.y * 0.2)
                                 .max_width(2000.0)
                                 .id_salt(2)
                                 .show(ui, |ui| {
