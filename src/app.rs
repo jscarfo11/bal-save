@@ -10,9 +10,7 @@ use std::io::Read;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct MyApp {
-    text_channel: (Sender<String>, Receiver<String>),
     meta_channel: (Sender<Meta>, Receiver<Meta>),
-    save_text: String,
     meta: Option<Meta>,
     popups: Vec<Popup>, // test: bool,
     tab: TabState,
@@ -21,9 +19,7 @@ pub struct MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            text_channel: channel(),
             meta_channel: channel(),
-            save_text: "".into(),
             meta: None,
             popups: vec![],
             tab: TabState::None,
@@ -42,9 +38,7 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // assign sample text once it comes in
-        if let Ok(text) = self.text_channel.1.try_recv() {
-            self.save_text = text;
-        }
+
 
         if let Ok(meta) = self.meta_channel.1.try_recv() {
             self.meta = Some(meta);
@@ -97,7 +91,6 @@ impl eframe::App for MyApp {
             match self.tab {
                 TabState::None => {
                     if ui.button("📂 Open text file").clicked() {
-                        let sender = self.text_channel.0.clone();
                         let meta_sender = self.meta_channel.0.clone();
                         let task = rfd::AsyncFileDialog::new().pick_file();
                         // Context is wrapped in an Arc so it's cheap to clone as per:
@@ -110,7 +103,6 @@ impl eframe::App for MyApp {
                             if let Some(file) = file {
                                 let text = file.read().await;
                                 let lua_context = LuaContext::new();
-                                let _ = sender.send(decompress_data(text.clone()).unwrap());
                                 ctx.request_repaint();
 
                                 let meta = Meta::from_lua_table(lua_context, text);
@@ -178,7 +170,6 @@ impl eframe::App for MyApp {
                                 }
                             }
                             None => {
-                                println!("No meta yet");
                                 self.popups
                                     .push(Popup::new("Please Load a file before trying to save", "Close"));
                             }
