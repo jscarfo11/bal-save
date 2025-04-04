@@ -2,6 +2,7 @@ use mlua::{Lua, Table, Value};
 use std::{collections::HashMap, io::Read};
 
 use crate::defaults::{CARDS, DECKS, ENCHANCEMENTS, JOKERS, VOUCHERS};
+use std::io::Write;
 
 pub struct LuaContext {
     lua: Lua,
@@ -42,11 +43,11 @@ impl LuaContext {
 
 #[derive(Debug, Clone)]
 pub struct Meta {
-    jokers: HashMap<String, Joker>,
-    vouchers: HashMap<String, Voucher>,
-    decks: HashMap<String, Deck>,
-    cards: HashMap<String, Card>,
-    enchancements: HashMap<String, Enchancement>,
+    jokers: HashMap<String, MetaItem>,
+    vouchers: HashMap<String, MetaItem>,
+    decks: HashMap<String, MetaItem>,
+    cards: HashMap<String, MetaItem>,
+    enchancements: HashMap<String, MetaItem>,
 }
 
 impl Meta {
@@ -60,6 +61,110 @@ impl Meta {
         }
     }
 
+    pub fn to_lua_data(&self, lua: &LuaContext) -> Result<Vec<u8>, mlua::Error> {
+        let table = lua.lua.create_table().unwrap();
+        let alerted_table = lua.lua.create_table().unwrap();
+        let discovered_table = lua.lua.create_table().unwrap();
+        let unlocked_table = lua.lua.create_table().unwrap();
+
+        for (name, item) in self.jokers.iter() {
+            alerted_table.set(name.clone(), item.alerted).unwrap();
+            discovered_table.set(name.clone(), item.discovered).unwrap();
+            unlocked_table.set(name.clone(), item.unlocked).unwrap();
+        }
+        for (name, item) in self.vouchers.iter() {
+            alerted_table.set(name.clone(), item.alerted).unwrap();
+            discovered_table.set(name.clone(), item.discovered).unwrap();
+            unlocked_table.set(name.clone(), item.unlocked).unwrap();
+        }
+        for (name, item) in self.decks.iter() {
+            alerted_table.set(name.clone(), item.alerted).unwrap();
+            discovered_table.set(name.clone(), item.discovered).unwrap();
+            unlocked_table.set(name.clone(), item.unlocked).unwrap();
+        }
+        for (name, item) in self.cards.iter() {
+            alerted_table.set(name.clone(), item.alerted).unwrap();
+            discovered_table.set(name.clone(), item.discovered).unwrap();
+            unlocked_table.set(name.clone(), item.unlocked).unwrap();
+        }
+        for (name, item) in self.enchancements.iter() {
+            alerted_table.set(name.clone(), item.alerted).unwrap();
+            discovered_table.set(name.clone(), item.discovered).unwrap();
+            unlocked_table.set(name.clone(), item.unlocked).unwrap();
+        }
+
+        table
+            .set("alerted", alerted_table)
+            .expect("Failed to set alerted table");
+        table
+            .set("discovered", discovered_table)
+            .expect("Failed to set discovered table");
+        table
+            .set("unlocked", unlocked_table)
+            .expect("Failed to set unlocked table");
+
+        let compress_func: mlua::Function= lua.lua.load(
+            r#"
+            --[[
+MIT License
+Copyright (c) 2017 Robert Herlihy
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
+
+--I modified this A LOT. Needed to make it quicker if it is being saved to file every few seconds during a game
+function STR_PACK(data, recursive)
+	local ret_str = (recursive and "" or "return ").."{"
+
+      for i, v in pairs(data) do
+		local type_i, type_v = type(i), type(v)
+        assert((type_i ~= "table"), "Data table cannot have an table as a key reference")
+        if type_i == "string" then
+			i = '['..string.format("%q",i)..']'
+        else
+          	i = "["..i.."]"
+        end
+        if type_v == "table" then
+			if v.is and v:is(Object) then
+				v = [["]].."MANUAL_REPLACE"..[["]]
+			else
+				v = STR_PACK(v, true)
+			end
+        else
+          if type_v == "string" then v = string.format("%q", v) end
+		  if type_v == "boolean" then v = v and "true" or "false" end
+        end
+		ret_str = ret_str..i.."="..v..","
+      end
+
+	  return ret_str.."}"
+
+end
+
+return STR_PACK
+"#
+        ).eval()?;
+
+        let compressed = compress_func.call::<String>(table).unwrap();
+        let mut encoder =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(compressed.as_bytes()).unwrap();
+        Ok(encoder.finish().unwrap())
+    }
+
     pub fn from_lua_table(lua: LuaContext, data: Vec<u8>) -> Self {
         let table = lua.data_as_table(data, "map_table").unwrap();
         let mut meta = Meta::new();
@@ -69,7 +174,7 @@ impl Meta {
         let discovered_table = lua.access_subtable(&table, "discovered").unwrap();
         let unlocked_table = lua.access_subtable(&table, "unlocked").unwrap();
 
-        for (pair) in alerted_table.pairs::<String, bool>() {
+        for pair in alerted_table.pairs::<String, bool>() {
             match pair {
                 Ok((name, alerted)) => {
                     if name.starts_with("j_") {
@@ -191,13 +296,13 @@ impl Meta {
     }
 
     fn add_joker(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let joker = Joker::new(name.clone(), alerted, discovered, unlocked);
+        let joker = MetaItem::new(alerted, discovered, unlocked);
         self.jokers.insert(name, joker);
     }
-    pub fn get_joker(&mut self, name: &str) -> Option<&mut Joker> {
+    pub fn get_joker(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.jokers.get_mut(name)
     }
-    fn get_all_jokers(&self) -> Vec<&Joker> {
+    fn get_all_jokers(&self) -> Vec<&MetaItem> {
         self.jokers.values().collect()
     }
     pub fn get_joker_names(&self) -> Vec<String> {
@@ -213,14 +318,14 @@ impl Meta {
     }
 
     fn add_voucher(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let voucher = Voucher::new(name.clone(), alerted, discovered, unlocked);
+        let voucher = MetaItem::new(alerted, discovered, unlocked);
         self.vouchers.insert(name, voucher);
     }
 
-    pub fn get_voucher(&mut self, name: &str) -> Option<&mut Voucher> {
+    pub fn get_voucher(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.vouchers.get_mut(name)
     }
-    fn get_all_vouchers(&self) -> Vec<&Voucher> {
+    fn get_all_vouchers(&self) -> Vec<&MetaItem> {
         self.vouchers.values().collect()
     }
     pub fn get_voucher_names(&self) -> Vec<String> {
@@ -235,17 +340,17 @@ impl Meta {
         }
     }
 
-    fn get_all_decks(&self) -> Vec<&Deck> {
+    fn get_all_decks(&self) -> Vec<&MetaItem> {
         self.decks.values().collect()
     }
     fn get_deck_names(&self) -> Vec<String> {
         self.decks.keys().cloned().collect()
     }
     fn add_deck(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let deck = Deck::new(name.clone(), alerted, discovered, unlocked);
+        let deck = MetaItem::new(alerted, discovered, unlocked);
         self.decks.insert(name, deck);
     }
-    fn get_deck(&mut self, name: &str) -> Option<&mut Deck> {
+    fn get_deck(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.decks.get_mut(name)
     }
 
@@ -258,13 +363,13 @@ impl Meta {
     }
 
     fn add_card(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let card = Card::new(name.clone(), alerted, discovered, unlocked);
+        let card = MetaItem::new(alerted, discovered, unlocked);
         self.cards.insert(name, card);
     }
-    fn get_card(&mut self, name: &str) -> Option<&mut Card> {
+    fn get_card(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.cards.get_mut(name)
     }
-    fn get_all_cards(&self) -> Vec<&Card> {
+    fn get_all_cards(&self) -> Vec<&MetaItem> {
         self.cards.values().collect()
     }
     fn get_card_names(&self) -> Vec<String> {
@@ -280,13 +385,13 @@ impl Meta {
     }
 
     fn add_enchancement(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let enchancement = Enchancement::new(name.clone(), alerted, discovered, unlocked);
+        let enchancement = MetaItem::new(alerted, discovered, unlocked);
         self.enchancements.insert(name, enchancement);
     }
-    pub fn get_enchancement(&mut self, name: &str) -> Option<&mut Enchancement> {
+    pub fn get_enchancement(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.enchancements.get_mut(name)
     }
-    fn get_all_enchancements(&self) -> Vec<&Enchancement> {
+    fn get_all_enchancements(&self) -> Vec<&MetaItem> {
         self.enchancements.values().collect()
     }
     pub fn get_enchancement_names(&self) -> Vec<String> {
@@ -303,89 +408,15 @@ impl Meta {
 }
 
 #[derive(Debug, Clone)]
-pub struct Joker {
-    name: String,
+pub struct MetaItem {
     pub alerted: bool,
     pub discovered: bool,
     pub unlocked: bool,
 }
 
-impl Joker {
-    fn new(name: String, alerted: bool, discovered: bool, unlocked: bool) -> Self {
-        Joker {
-            name,
-            alerted,
-            discovered,
-            unlocked,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Voucher {
-    name: String,
-    pub alerted: bool,
-    pub discovered: bool,
-    pub unlocked: bool,
-}
-impl Voucher {
-    fn new(name: String, alerted: bool, discovered: bool, unlocked: bool) -> Self {
-        Voucher {
-            name,
-            alerted,
-            discovered,
-            unlocked,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Deck {
-    name: String,
-    alerted: bool,
-    discovered: bool,
-    unlocked: bool,
-}
-impl Deck {
-    fn new(name: String, alerted: bool, discovered: bool, unlocked: bool) -> Self {
-        Deck {
-            name,
-            alerted,
-            discovered,
-            unlocked,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Card {
-    name: String,
-    alerted: bool,
-    discovered: bool,
-    unlocked: bool,
-}
-impl Card {
-    fn new(name: String, alerted: bool, discovered: bool, unlocked: bool) -> Self {
-        Card {
-            name,
-            alerted,
-            discovered,
-            unlocked,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Enchancement {
-    name: String,
-    alerted: bool,
-    discovered: bool,
-    unlocked: bool,
-}
-impl Enchancement {
-    fn new(name: String, alerted: bool, discovered: bool, unlocked: bool) -> Self {
-        Enchancement {
-            name,
+impl MetaItem {
+    fn new(alerted: bool, discovered: bool, unlocked: bool) -> Self {
+        MetaItem {
             alerted,
             discovered,
             unlocked,
@@ -407,3 +438,34 @@ impl PartialEq for TabState {
     }
 }
 impl Eq for TabState {}
+
+pub struct Popup {
+    show: bool,
+    message: String,
+    button: String,
+}
+
+impl Popup {
+    pub fn new(msg: &str, btn: &str) -> Self {
+        Popup {
+            show: true,
+            message: msg.to_string(),
+            button: btn.to_string(),
+        }
+    }
+    pub fn show(&mut self) {
+        self.show = true;
+    }
+    pub fn hide(&mut self) {
+        self.show = false;
+    }
+    pub fn is_showing(&self) -> bool {
+        self.show
+    }
+    pub fn get_message(&self) -> &str {
+        &self.message
+    }
+    pub fn get_button(&self) -> &str {
+        &self.button
+    }
+}

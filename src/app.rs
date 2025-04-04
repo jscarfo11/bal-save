@@ -1,7 +1,9 @@
 use crate::helpers::LuaContext;
 use crate::helpers::Meta;
+use crate::helpers::Popup;
 use crate::helpers::TabState;
 use egui::Context;
+use egui::Window;
 use inflector::Inflector;
 use std::future::Future;
 use std::io::Read;
@@ -12,7 +14,7 @@ pub struct MyApp {
     meta_channel: (Sender<Meta>, Receiver<Meta>),
     save_text: String,
     meta: Option<Meta>,
-    // test: bool,
+    popups: Vec<Popup>, // test: bool,
     tab: TabState,
 }
 
@@ -23,6 +25,7 @@ impl Default for MyApp {
             meta_channel: channel(),
             save_text: "".into(),
             meta: None,
+            popups: vec![],
             tab: TabState::None,
             // test: false,
         }
@@ -72,6 +75,22 @@ impl eframe::App for MyApp {
                     .clicked()
                 {
                     self.tab = TabState::Help;
+                }
+            });
+            self.popups.retain_mut(|popup| {
+                if popup.is_showing() {
+                    Window::new("No Meta")
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ctx, |ui| {
+                            ui.label(popup.get_message());
+                            if ui.button(popup.get_button()).clicked() {
+                                popup.hide();
+                            }
+                        });
+                    true
+                } else {
+                    false
                 }
             });
 
@@ -135,14 +154,35 @@ impl eframe::App for MyApp {
                     }
 
                     if ui.button("💾 Save text to file").clicked() {
-                        let task = rfd::AsyncFileDialog::new().save_file();
-                        let contents = self.save_text.clone();
-                        execute(async move {
-                            let file = task.await;
-                            if let Some(file) = file {
-                                _ = file.write(contents.as_bytes()).await;
+                        match &self.meta {
+                            Some(meta) => {
+                                let lua_context = LuaContext::new();
+                                let x = meta.to_lua_data(&lua_context);
+                                match x {
+                                    Ok(x) => {
+                                        let task = rfd::AsyncFileDialog::new().save_file();
+                                        execute(async move {
+                                            let file = task.await;
+                                            if let Some(file) = file {
+                                                // let file_content = self.meta.to_lua_data();
+                                                _ = file.write(&x).await;
+                                            }
+                                        });
+                                    }
+                                    Err(err) => {
+                                        self.popups.push(Popup::new(
+                                            format!("Error: {}", err).as_str(),
+                                            "Close",
+                                        ));
+                                    }
+                                }
                             }
-                        });
+                            None => {
+                                println!("No meta yet");
+                                self.popups
+                                    .push(Popup::new("Please Load a file before trying to save", "Close"));
+                            }
+                        }
                     }
                 }
 
