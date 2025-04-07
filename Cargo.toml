@@ -11,3 +11,10 @@ flate2 = "1.1.0"
 futures = "0.3.31"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 rfd = "0.15.3"
+
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
+codegen-units = 1

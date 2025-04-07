@@ -39,7 +39,6 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // assign sample text once it comes in
 
-
         if let Ok(meta) = self.meta_channel.1.try_recv() {
             self.meta = Some(meta);
         }
@@ -170,8 +169,10 @@ impl eframe::App for MyApp {
                                 }
                             }
                             None => {
-                                self.popups
-                                    .push(Popup::new("Please Load a file before trying to save", "Close"));
+                                self.popups.push(Popup::new(
+                                    "Please Load a file before trying to save",
+                                    "Close",
+                                ));
                             }
                         }
                     }
@@ -180,38 +181,33 @@ impl eframe::App for MyApp {
                 TabState::Editor => {
                     ui.label("Editor");
                     ui.horizontal(|ui| {
-                        ui.label("Jokers");
-
-                        ui.separator();
-
-                        ui.label("Vouchers");
-                    });
-
+                        
                     match &mut self.meta {
                         Some(meta) => {
-                            if ui.button("Unlock All Jokers").clicked() {
-                                meta.unlock_all_jokers();
-                            }
+                            
 
-                            if ui.button("Unlock All Vouchers").clicked() {
-                                meta.unlock_all_vouchers();
-                            }
+                            
 
-                            if ui.button("Unlock All Cards").clicked() {
-                                meta.unlock_all_cards();
-                            }
+                            // if ui.button("Unlock All Cards").clicked() {
+                            //     meta.unlock_all_type("c_");
+                            // }
 
-                            if ui.button("Unlock All Enchantments").clicked() {
-                                meta.unlock_all_enchancements();
-                            }
+                            // if ui.button("Unlock All Enchantments").clicked() {
+                            //     meta.unlock_all_type("e_");
+                            // }
 
-                            if ui.button("Unlock All Decks").clicked() {
-                                meta.unlock_all_decks();
-                            }
+                            // if ui.button("Unlock All Decks").clicked() {
+                            //     meta.unlock_all_type("b_");
+                            // }
                             let window_size = ctx.screen_rect().size();
-                            egui::containers::ScrollArea::vertical()
+                            ui.vertical(|ui| {
+                            if ui.button("Unlock All Jokers").clicked() {
+                                meta.unlock_all_type("j_");
+                            }
+                            egui::containers::ScrollArea::both()
+                                .auto_shrink(false)
                                 .max_height(window_size.y * 0.2)
-                                .max_width(2000.0)
+                                .max_width(window_size.x * 0.49)
                                 .id_salt(1)
                                 .show(ui, |ui| {
                                     let mut joker_names = meta.get_joker_names();
@@ -222,7 +218,7 @@ impl eframe::App for MyApp {
                                                 "{}",
                                                 &joker_name[2..].to_title_case()
                                             ));
-                                            let joker = meta.get_joker(&joker_name);
+                                            let joker = meta.get_item(&joker_name);
 
                                             let joker_val = joker.unwrap();
 
@@ -232,12 +228,18 @@ impl eframe::App for MyApp {
                                         });
                                     }
                                 });
-                            ui.add_space(10.0);
+                            });
+                            ui.add_space(window_size.x * 0.01);
                             ui.separator();
-                            ui.add_space(10.0);
-                            egui::containers::ScrollArea::vertical()
+                            ui.add_space(window_size.x * 0.01);
+                            ui.vertical(|ui| {
+                            if ui.button("Unlock All Vouchers").clicked() {
+                                meta.unlock_all_type("v_");
+                            }
+                            egui::containers::ScrollArea::both()
+                                .auto_shrink(false)
                                 .max_height(window_size.y * 0.2)
-                                .max_width(2000.0)
+                                .max_width(window_size.x * 0.49)
                                 .id_salt(2)
                                 .show(ui, |ui| {
                                     let mut voucher_names = meta.get_voucher_names();
@@ -248,7 +250,7 @@ impl eframe::App for MyApp {
                                                 "{}",
                                                 &voucher_name[2..].to_title_case()
                                             ));
-                                            let voucher = meta.get_voucher(&voucher_name);
+                                            let voucher = meta.get_item(&voucher_name);
 
                                             let voucher_val = voucher.unwrap();
 
@@ -258,12 +260,14 @@ impl eframe::App for MyApp {
                                         });
                                     }
                                 });
-                        }
+                        });
+                    }
                         None => {
                             ui.label("No Meta yet");
                         }
                     }
-                }
+                });
+            }
 
                 TabState::Settings => {
                     ui.label("Settings");
