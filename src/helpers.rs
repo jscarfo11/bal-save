@@ -4,6 +4,7 @@ use std::{collections::HashMap, io::Read};
 use crate::defaults::DEFAULT_META;
 use std::io::Write;
 
+
 pub struct LuaContext {
     lua: Lua,
 }
@@ -44,12 +45,14 @@ impl LuaContext {
 #[derive(Debug, Clone)]
 pub struct Meta {
     items: HashMap<String, MetaItem>,
+    pub filters: Filters,
 }
 
 impl Meta {
     fn new() -> Self {
         Meta {
             items: HashMap::new(),
+            filters: Filters::new(),
         }
     }
 
@@ -202,7 +205,6 @@ return STR_PACK
 
     pub fn get_joker_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
-
         all.retain_mut(|name| {
             if name.starts_with("j_") {
                 return true;
@@ -258,7 +260,7 @@ return STR_PACK
         all
     }
 
-    pub fn get_enchancement_names(&self) -> Vec<String> {
+    pub fn get_enhancement_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
             if name.starts_with("e_") {
@@ -307,6 +309,7 @@ impl PartialEq for TabState {
 }
 impl Eq for TabState {}
 
+#[derive(Debug, Clone)]
 pub struct Popup {
     show: bool,
     message: String,
@@ -335,5 +338,26 @@ impl Popup {
     }
     pub fn get_button(&self) -> &str {
         &self.button
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Filters {
+    pub joker: String,
+    pub deck: String,
+    pub card: String,
+    pub enhancement: String,
+    pub voucher: String,
+}
+
+impl Filters {
+    pub fn new() -> Self {
+        Filters {
+            joker: String::new(),
+            deck: String::new(),
+            card: String::new(),
+            enhancement: String::new(),
+            voucher: String::new(),
+        }
     }
 }

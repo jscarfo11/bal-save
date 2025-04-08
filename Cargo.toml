@@ -9,6 +9,7 @@ eframe = "0.31.1"
 egui = "0.31.1"
 flate2 = "1.1.0"
 futures = "0.3.31"
+fuzzy-matcher = "0.3.7"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 rfd = "0.15.3"
 

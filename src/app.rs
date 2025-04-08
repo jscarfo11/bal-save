@@ -4,6 +4,9 @@ use crate::helpers::Popup;
 use crate::helpers::TabState;
 use egui::Context;
 use egui::Window;
+use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
+
 use inflector::Inflector;
 use std::future::Future;
 use std::io::Read;
@@ -14,6 +17,8 @@ pub struct MyApp {
     meta: Option<Meta>,
     popups: Vec<Popup>, // test: bool,
     tab: TabState,
+    matcher: SkimMatcherV2,
+
 }
 
 impl Default for MyApp {
@@ -23,6 +28,7 @@ impl Default for MyApp {
             meta: None,
             popups: vec![],
             tab: TabState::None,
+            matcher: SkimMatcherV2::default(),
             // test: false,
         }
     }
@@ -33,6 +39,15 @@ impl MyApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         MyApp::default()
     }
+
+
+    // pub fn draw_meta(&mut self, ui: &mut egui::Ui) {
+    //     if let Some(meta) = &self.meta {
+    //         ui.label(format!("Meta: {}", meta.to_string()));
+    //     } else {
+    //         ui.label("No Meta");
+    //     }
+    // }
 }
 
 impl eframe::App for MyApp {
@@ -179,95 +194,375 @@ impl eframe::App for MyApp {
                 }
 
                 TabState::Editor => {
-                    ui.label("Editor");
                     ui.horizontal(|ui| {
-                        
-                    match &mut self.meta {
-                        Some(meta) => {
-                            
+                        match &mut self.meta {
+                            Some(meta) => {
 
-                            
 
-                            // if ui.button("Unlock All Cards").clicked() {
-                            //     meta.unlock_all_type("c_");
-                            // }
 
-                            // if ui.button("Unlock All Enchantments").clicked() {
-                            //     meta.unlock_all_type("e_");
-                            // }
+                                
+                                // if ui.button("Unlock All Cards").clicked() {
+                                //     meta.unlock_all_type("c_");
+                                // }
 
-                            // if ui.button("Unlock All Decks").clicked() {
-                            //     meta.unlock_all_type("b_");
-                            // }
-                            let window_size = ctx.screen_rect().size();
-                            ui.vertical(|ui| {
-                            if ui.button("Unlock All Jokers").clicked() {
-                                meta.unlock_all_type("j_");
-                            }
-                            egui::containers::ScrollArea::both()
-                                .auto_shrink(false)
-                                .max_height(window_size.y * 0.2)
-                                .max_width(window_size.x * 0.49)
-                                .id_salt(1)
-                                .show(ui, |ui| {
-                                    let mut joker_names = meta.get_joker_names();
-                                    joker_names.sort();
-                                    for joker_name in joker_names.iter() {
-                                        ui.horizontal(|ui| {
-                                            ui.label(format!(
-                                                "{}",
-                                                &joker_name[2..].to_title_case()
-                                            ));
-                                            let joker = meta.get_item(&joker_name);
+                                // if ui.button("Unlock All Enchantments").clicked() {
+                                //     meta.unlock_all_type("e_");
+                                // }
 
-                                            let joker_val = joker.unwrap();
+                                // if ui.button("Unlock All Decks").clicked() {
+                                //     meta.unlock_all_type("b_");
+                                // }
+                                let mut scroll_id = 1;
+                                let window_size = ctx.screen_rect().size();
+                                let num_columns = 2;
+                                let scroll_height = window_size.y * 0.4;
+                                let smaller_scroll_height = scroll_height * 0.4095;
+                                let search_width = window_size.x / num_columns as f32 * 0.65;
 
-                                            ui.checkbox(&mut joker_val.alerted, "Alerted");
-                                            ui.checkbox(&mut joker_val.discovered, "Discovered");
-                                            ui.checkbox(&mut joker_val.unlocked, "Unlocked");
-                                        });
-                                    }
+                                ui.columns(num_columns, |columns| {
+                                    columns[0].with_layout(
+                                        egui::Layout::top_down(egui::Align::Center),
+                                        |ui| {
+                                            ui.label("Jokers");
+                                            ui.horizontal(|ui| {
+                                                // ui.label("Search");
+
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut meta.filters.joker,
+                                                    )
+                                                    .desired_width(search_width)
+                                                    .hint_text("Filter Jokers"),
+                                                );
+                                                if ui.button("Unlock All").clicked() {
+                                                    meta.unlock_all_type("j_");
+                                                }
+                                            });
+
+                                            egui::containers::ScrollArea::both()
+                                                .auto_shrink(false)
+                                                .max_height(scroll_height)
+                                                .min_scrolled_height(scroll_height)
+                                                .id_salt(scroll_id)
+                                                .show(ui, |ui| {
+                                                    let mut joker_names = meta.get_joker_names();
+                                                   
+
+                                                    if meta.filters.joker != "" {
+                                                        joker_names.retain(|name| {
+                                                            let score = self.matcher.fuzzy_match(
+                                                                &name[2..].to_lowercase(),
+                                                                &meta.filters.joker.to_lowercase(),
+                                                            );
+                                                            if score.is_some_and(|x| x > 1) {
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        });
+                                                    }
+                                                    for joker_name in joker_names.iter() {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(format!(
+                                                                "{}",
+                                                                &joker_name[2..].to_title_case()
+                                                            ));
+                                                            let joker = meta.get_item(&joker_name);
+
+                                                            let joker_val = joker.unwrap();
+
+                                                            ui.checkbox(
+                                                                &mut joker_val.alerted,
+                                                                "Alerted",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut joker_val.discovered,
+                                                                "Discovered",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut joker_val.unlocked,
+                                                                "Unlocked",
+                                                            );
+                                                        });
+                                                    }
+                                                });
+                                            scroll_id += 1;
+                                            ui.separator();
+
+                     
+
+                                            ui.label("Cards");
+                                            ui.horizontal(|ui| {
+                                                // ui.label("Search");
+
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut meta.filters.card,
+                                                    )
+                                                    .desired_width(search_width)
+                                                    .hint_text("Filter Cards"),
+                                                );
+                                                if ui.button("Unlock All").clicked() {
+                                                    meta.unlock_all_type("c_");
+                                                }
+                                            });
+                                            egui::containers::ScrollArea::both()
+                                                .auto_shrink(false)
+                                                .max_height(scroll_height)
+                                                .min_scrolled_height(scroll_height)
+                                                .id_salt(scroll_id)
+                                                .show(ui, |ui| {
+                                                    let mut card_names = meta.get_card_names();
+
+                                                    if meta.filters.card != "" {
+                                                        card_names.retain(|name| {
+                                                            let score = self.matcher.fuzzy_match(
+                                                                &name[2..].to_lowercase(),
+                                                                &meta.filters.card.to_lowercase(),
+                                                            );
+                                                            if score.is_some_and(|x| x > 1) {
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        });
+                                                    }
+
+                                                    for card_name in card_names.iter() {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(format!(
+                                                                "{}",
+                                                                &card_name[2..].to_title_case()
+                                                            ));
+                                                            let card = meta.get_item(&card_name);
+
+                                                            let card_val = card.unwrap();
+
+                                                            ui.checkbox(
+                                                                &mut card_val.alerted,
+                                                                "Alerted",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut card_val.discovered,
+                                                                "Discovered",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut card_val.unlocked,
+                                                                "Unlocked",
+                                                            );
+                                                        });
+                                                    }
+                                                });
+                                            scroll_id += 1;
+                                            ui.separator();
+                                        },
+                                    );
+
+                                    columns[1].with_layout(
+                                        egui::Layout::top_down(egui::Align::Center),
+                                        |ui| {
+                                            ui.label("Vouchers");
+                                            ui.horizontal(|ui| {
+                                                // ui.label("Search");
+
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut meta.filters.voucher,
+                                                    )
+                                                    .desired_width(search_width)
+                                                    .hint_text("Filter Vouchers"),
+                                                );
+                                                if ui.button("Unlock All").clicked() {
+                                                    meta.unlock_all_type("v_");
+                                                }
+                                            });
+                                            egui::containers::ScrollArea::both()
+                                                .auto_shrink(false)
+                                                .max_height(scroll_height)
+                                                .min_scrolled_height(scroll_height)
+                                                .id_salt(scroll_id)
+                                                .show(ui, |ui| {
+                                                    let mut voucher_names =
+                                                        meta.get_voucher_names();
+
+                                                    if meta.filters.voucher != "" {
+                                                        voucher_names.retain(|name| {
+                                                            let score = self.matcher.fuzzy_match(
+                                                                &name[2..].to_lowercase(),
+                                                                &meta.filters.voucher.to_lowercase(),
+                                                            );
+                                                            if score.is_some_and(|x| x > 1) {
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        });
+                                                    }
+                                                    for voucher_name in voucher_names.iter() {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(format!(
+                                                                "{}",
+                                                                &voucher_name[2..].to_title_case()
+                                                            ));
+                                                            let voucher =
+                                                                meta.get_item(&voucher_name);
+
+                                                            let voucher_val = voucher.unwrap();
+
+                                                            ui.checkbox(
+                                                                &mut voucher_val.alerted,
+                                                                "Alerted",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut voucher_val.discovered,
+                                                                "Discovered",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut voucher_val.unlocked,
+                                                                "Unlocked",
+                                                            );
+                                                        });
+                                                    }
+                                                });
+                                            scroll_id += 1;
+                                            ui.separator();
+                                            ui.label("Decks");
+                                            ui.horizontal(|ui| {
+                                                // ui.label("Search");
+
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut meta.filters.deck,
+                                                    )
+                                                    .desired_width(search_width)
+                                                    .hint_text("Filter Decks"),
+                                                );
+                                                if ui.button("Unlock All").clicked() {
+                                                    meta.unlock_all_type("b_");
+                                                }
+                                            });
+
+                                            egui::containers::ScrollArea::both()
+                                                .auto_shrink(false)
+                                                .max_height(smaller_scroll_height)
+                                                .min_scrolled_height(smaller_scroll_height)
+                                                .id_salt(scroll_id)
+                                                .show(ui, |ui| {
+                                                    let mut deck_names = meta.get_deck_names();
+
+                                                    if meta.filters.deck != "" {
+                                                        deck_names.retain(|name| {
+                                                            let score = self.matcher.fuzzy_match(
+                                                                &name[2..].to_lowercase(),
+                                                                &meta.filters.deck.to_lowercase(),
+                                                            );
+                                                            if score.is_some_and(|x| x > 1) {
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        });
+                                                    }
+                                                    for deck_name in deck_names.iter() {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(format!(
+                                                                "{}",
+                                                                &deck_name[2..].to_title_case()
+                                                            ));
+                                                            let deck = meta.get_item(&deck_name);
+
+                                                            let deck_val = deck.unwrap();
+
+                                                            ui.checkbox(
+                                                                &mut deck_val.alerted,
+                                                                "Alerted",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut deck_val.discovered,
+                                                                "Discovered",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut deck_val.unlocked,
+                                                                "Unlocked",
+                                                            );
+                                                        });
+                                                    }
+                                                });
+                                            scroll_id += 1;
+                                            ui.separator();
+                                            ui.label("Enhancements");
+                                            ui.horizontal(|ui| {
+                                                // ui.label("Search");
+
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut meta.filters.enhancement,
+                                                    )
+                                                    .desired_width(search_width)
+                                                    .hint_text("Filter Enhancements"),
+                                                );
+                                                if ui.button("Unlock All").clicked() {
+                                                    meta.unlock_all_type("e_");
+                                                }
+                                            });
+                                            egui::containers::ScrollArea::both()
+                                                .auto_shrink(false)
+                                                .max_height(smaller_scroll_height)
+                                                .min_scrolled_height(smaller_scroll_height)
+                                                .id_salt(scroll_id)
+                                                .show(ui, |ui| {
+                                                    let mut enchantment_names =
+                                                        meta.get_enhancement_names();
+
+                                                    if meta.filters.enhancement != "" {
+                                                        enchantment_names.retain(|name| {
+                                                            let score = self.matcher.fuzzy_match(
+                                                                &name[2..].to_lowercase(),
+                                                                &meta.filters.enhancement.to_lowercase(),
+                                                            );
+                                                            if score.is_some_and(|x| x > 1) {
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        });
+                                                    }
+                                                    for enchantment_name in enchantment_names.iter()
+                                                    {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(format!(
+                                                                "{}",
+                                                                &enchantment_name[2..]
+                                                                    .to_title_case()
+                                                            ));
+                                                            let enchantment =
+                                                                meta.get_item(&enchantment_name);
+
+                                                            let enchantment_val =
+                                                                enchantment.unwrap();
+
+                                                            ui.checkbox(
+                                                                &mut enchantment_val.alerted,
+                                                                "Alerted",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut enchantment_val.discovered,
+                                                                "Discovered",
+                                                            );
+                                                            ui.checkbox(
+                                                                &mut enchantment_val.unlocked,
+                                                                "Unlocked",
+                                                            );
+                                                        });
+                                                    }
+                                                });
+                                            scroll_id += 1;
+                                            ui.separator();
+                                        },
+                                    );
                                 });
-                            });
-                            ui.add_space(window_size.x * 0.01);
-                            ui.separator();
-                            ui.add_space(window_size.x * 0.01);
-                            ui.vertical(|ui| {
-                            if ui.button("Unlock All Vouchers").clicked() {
-                                meta.unlock_all_type("v_");
                             }
-                            egui::containers::ScrollArea::both()
-                                .auto_shrink(false)
-                                .max_height(window_size.y * 0.2)
-                                .max_width(window_size.x * 0.49)
-                                .id_salt(2)
-                                .show(ui, |ui| {
-                                    let mut voucher_names = meta.get_voucher_names();
-                                    voucher_names.sort();
-                                    for voucher_name in voucher_names.iter() {
-                                        ui.horizontal(|ui| {
-                                            ui.label(format!(
-                                                "{}",
-                                                &voucher_name[2..].to_title_case()
-                                            ));
-                                            let voucher = meta.get_item(&voucher_name);
-
-                                            let voucher_val = voucher.unwrap();
-
-                                            ui.checkbox(&mut voucher_val.alerted, "Alerted");
-                                            ui.checkbox(&mut voucher_val.discovered, "Discovered");
-                                            ui.checkbox(&mut voucher_val.unlocked, "Unlocked");
-                                        });
-                                    }
-                                });
-                        });
-                    }
-                        None => {
-                            ui.label("No Meta yet");
+                            None => {
+                                ui.label("No Save Loaded");
+                            }
                         }
-                    }
-                });
-            }
+                    });
+                }
 
                 TabState::Settings => {
                     ui.label("Settings");
