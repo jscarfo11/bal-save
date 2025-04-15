@@ -1,12 +1,19 @@
 use mlua::{Lua, Table, Value};
-use std::{collections::HashMap, io::Read};
+use std::collections::{HashMap, HashSet};
 
-use crate::defaults::DEFAULT_META;
-use std::io::Write;
-
+use crate::defaults::{ALL_META, DEFAULT_META};
+use std::io::{Read, Write};
 
 pub struct LuaContext {
     lua: Lua,
+}
+
+fn option_parser(option: Option<bool>) -> String {
+    match option {
+        Some(true) => "Some(true)".to_string(),
+        Some(false) => "Some(false)".to_string(),
+        None => "None".to_string(),
+    }
 }
 
 impl LuaContext {
@@ -39,6 +46,78 @@ impl LuaContext {
         LuaContext {
             lua: self.lua.clone(),
         }
+    }
+
+    pub fn make_meta_defaults(&self, data: Vec<u8>) -> Result<(), mlua::Error> {
+        let t = self.data_as_table(data, "map_table")?;
+
+        let alerted_table = self.access_subtable(&t, "alerted")?;
+        let discovered_table = self.access_subtable(&t, "discovered")?;
+        let unlocked_table = self.access_subtable(&t, "unlocked")?;
+        let mut set = HashSet::new();
+
+        for pair in alerted_table.pairs::<String, bool>() {
+            match pair {
+                Ok((name, _)) => {
+                    if name.contains("cry_") || name.contains("mp_") || name.contains("mtg_") {
+                        continue;
+                    }
+                    set.insert(name);
+                }
+                Err(err) => eprintln!("Error iterating over alerted pairs: {}", err),
+            }
+        }
+
+        for pair in discovered_table.pairs::<String, bool>() {
+            match pair {
+                Ok((name, _)) => {
+                    if name.contains("cry_") || name.contains("mp_") || name.contains("mtg_") {
+                        continue;
+                    }
+                    set.insert(name);
+                }
+                Err(err) => eprintln!("Error iterating over discovered pairs: {}", err),
+            }
+        }
+
+        for pair in unlocked_table.pairs::<String, bool>() {
+            match pair {
+                Ok((name, _)) => {
+                    if name.contains("cry_") || name.contains("mp_") || name.contains("mtg_") {
+                        continue;
+                    }
+                    set.insert(name);
+                }
+                Err(err) => eprintln!("Error iterating over discovered pairs: {}", err),
+            }
+        }
+
+        for name in set.iter() {
+            let alerted: Option<bool> = if alerted_table.contains_key(name.clone())? {
+                Some(alerted_table.get(name.clone())?)
+            } else {
+                None
+            };
+
+            let discovered: Option<bool> = if discovered_table.contains_key(name.clone())? {
+                Some(discovered_table.get(name.clone())?)
+            } else {
+                None
+            };
+
+            let unlocked: Option<bool> = if unlocked_table.contains_key(name.clone())? {
+                Some(unlocked_table.get(name.clone())?)
+            } else {
+                None
+            };
+            let alerted = option_parser(alerted);
+            let discovered = option_parser(discovered);
+            let unlocked = option_parser(unlocked);
+
+            println!("(\"{}\", {}, {}, {}),", name, alerted, discovered, unlocked);
+        }
+
+        Ok(())
     }
 }
 
@@ -142,7 +221,8 @@ return STR_PACK
 
     pub fn from_lua_table(lua: LuaContext, data: Vec<u8>) -> Self {
         let table = lua.data_as_table(data, "map_table").unwrap();
-        let mut meta = Meta::new();
+        let mut meta = Meta::from_defaults();
+        let mut names: HashSet<String> = HashSet::new();
 
         // Access the subtable
         let alerted_table = lua.access_subtable(&table, "alerted").unwrap();
@@ -150,54 +230,119 @@ return STR_PACK
         let unlocked_table = lua.access_subtable(&table, "unlocked").unwrap();
 
         for pair in alerted_table.pairs::<String, bool>() {
-            match pair {
-                Ok((name, alerted)) => {
-                    meta.add_item(name.to_string(), alerted, false, false);
-                }
-                Err(err) => eprintln!("Error iterating over alerted pairs: {}", err),
-            }
+            let (name, _) = pair.unwrap();
+            names.insert(name.clone());
         }
-
         for pair in discovered_table.pairs::<String, bool>() {
-            match pair {
-                Ok((name, discovered)) => {
-                    if let Some(item) = meta.get_item(&name) {
-                        item.discovered = discovered;
-                    } else {
-                        meta.add_item(name.to_string(), false, discovered, false);
-                    }
-                }
-                Err(err) => eprintln!("Error iterating over discovered pairs: {}", err),
-            }
+            let (name, _) = pair.unwrap();
+            names.insert(name.clone());
         }
 
         for pair in unlocked_table.pairs::<String, bool>() {
-            match pair {
-                Ok((name, unlocked)) => {
-                    if let Some(item) = meta.get_item(&name) {
-                        item.unlocked = unlocked;
-                    } else {
-                        meta.add_item(name.to_string(), false, false, unlocked);
-                    }
-                }
-                Err(err) => eprintln!("Error iterating over discovered pairs: {}", err),
-            }
+            let (name, _) = pair.unwrap();
+            names.insert(name.clone());
         }
 
+        for name in names.iter() {
+            let alerted: Option<bool> = if alerted_table.contains_key(name.clone()).unwrap() {
+                Some(alerted_table.get(name.clone()).unwrap())
+            } else {
+                None
+            };
+
+            let discovered: Option<bool> = if discovered_table.contains_key(name.clone()).unwrap() {
+                Some(discovered_table.get(name.clone()).unwrap())
+            } else {
+                None
+            };
+
+            let unlocked: Option<bool> = if unlocked_table.contains_key(name.clone()).unwrap() {
+                Some(unlocked_table.get(name.clone()).unwrap())
+            } else {
+                None
+            };
+            meta.update_item(name, alerted, discovered, unlocked);
+        }
+
+        meta.add_missing_defaults();
         meta
+    }
+
+    fn add_missing_defaults(&mut self) {
+        for (name, alerted, discovered, unlocked) in DEFAULT_META.iter() {
+            if !self.items.contains_key(*name) {
+                self.add_item(name.to_string(), *alerted, *discovered, *unlocked);
+            }
+        }
     }
     pub fn from_defaults() -> Self {
         let mut meta = Meta::new();
+        for (name, alerted, discovered, unlocked) in ALL_META.iter() {
+            let mut alerted = *alerted;
+            let mut discovered = *discovered;
+            let mut unlocked = *unlocked;
+
+            if alerted.is_some() {
+                alerted = Some(false);
+            }
+            if discovered.is_some() {
+                discovered = Some(false);
+            }
+            if unlocked.is_some() {
+                unlocked = Some(false);
+            }
+
+            meta.add_item(name.to_string(), alerted, discovered, unlocked);
+        }
+
         for (name, alerted, discovered, unlocked) in DEFAULT_META.iter() {
-            meta.add_item(name.to_string(), *alerted, *discovered, *unlocked);
+            meta.update_item(*name, *alerted, *discovered, *unlocked);
         }
 
         meta
     }
 
-    fn add_item(&mut self, name: String, alerted: bool, discovered: bool, unlocked: bool) {
-        let joker = MetaItem::new(alerted, discovered, unlocked);
-        self.items.insert(name, joker);
+    fn update_item(
+        &mut self,
+        name: &str,
+        alerted: Option<bool>,
+        discovered: Option<bool>,
+        unlocked: Option<bool>,
+    ) {
+        if self.items.contains_key(name) {
+            let item = self.items.get_mut(name).unwrap();
+            item.alerted = alerted.unwrap_or(false);
+            item.discovered = discovered.unwrap_or(false);
+            item.unlocked = unlocked.unwrap_or(false);
+        } else {
+            // This means we have a modded item so we cannot be sure about what should be modified, so we let everything be modified
+            let mut alerted = alerted;
+            let mut discovered = discovered;
+            let mut unlocked = unlocked;
+
+            if alerted.is_none() {
+                alerted = Some(false);
+            }
+            if discovered.is_none() {
+                discovered = Some(false);
+            }
+            if unlocked.is_none() {
+                unlocked = Some(false);
+            }
+            let item = MetaItem::new(alerted, discovered, unlocked);
+            self.items.insert(name.to_string(), item);
+        }
+    }
+
+    fn add_item(
+        &mut self,
+        name: String,
+        alerted: Option<bool>,
+        discovered: Option<bool>,
+        unlocked: Option<bool>,
+    ) {
+        let item = MetaItem::new(alerted, discovered, unlocked);
+        self.items.insert(name, item);
     }
     pub fn get_item(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.items.get_mut(name)
@@ -260,7 +405,7 @@ return STR_PACK
         all
     }
 
-    pub fn get_enhancement_names(&self) -> Vec<String> {
+    pub fn get_edition_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
             if name.starts_with("e_") {
@@ -272,9 +417,21 @@ return STR_PACK
         all
     }
 
-    // pub fn get_enchancement_names(&self) -> Vec<String> {
-    //     self.enchancements.keys().cloned().collect()
-    // }
+    pub fn get_misc_names(&self) -> Vec<String> {
+        let mut all: Vec<String> = self.items.keys().cloned().collect();
+        let starting: [&str; 5] = ["b_", "e_", "bl_", "tag_", "p_"];
+        all.retain_mut(|name| {
+            for start in starting.iter() {
+                if name.starts_with(*start) {
+                    return true;
+                }
+            }
+
+            false
+        });
+        all.sort();
+        all
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -282,15 +439,37 @@ pub struct MetaItem {
     pub alerted: bool,
     pub discovered: bool,
     pub unlocked: bool,
+    poss_alert: bool,
+    poss_discover: bool,
+    poss_unlock: bool,
 }
 
 impl MetaItem {
-    fn new(alerted: bool, discovered: bool, unlocked: bool) -> Self {
+    fn new(alerted: Option<bool>, discovered: Option<bool>, unlocked: Option<bool>) -> Self {
+        let poss_alert = alerted.is_some();
+        let alerted = alerted.unwrap_or(false);
+        let poss_discover = discovered.is_some();
+        let discovered = discovered.unwrap_or(false);
+        let poss_unlock = unlocked.is_some();
+        let unlocked = unlocked.unwrap_or(false);
+
         MetaItem {
             alerted,
             discovered,
             unlocked,
+            poss_alert,
+            poss_discover,
+            poss_unlock,
         }
+    }
+    pub fn can_be_alerted(&self) -> bool {
+        self.poss_alert
+    }
+    pub fn can_be_discovered(&self) -> bool {
+        self.poss_discover
+    }
+    pub fn can_be_unlocked(&self) -> bool {
+        self.poss_unlock
     }
 }
 
@@ -310,43 +489,40 @@ impl PartialEq for TabState {
 impl Eq for TabState {}
 
 #[derive(Debug, Clone)]
+pub enum PopupType {
+    ErrorSave,
+    ErrorLoad,
+}
+
 pub struct Popup {
-    show: bool,
+    popup_type: PopupType,
     message: String,
-    button: String,
 }
 
 impl Popup {
-    pub fn new(msg: &str, btn: &str) -> Self {
+    pub fn new(popup_type: PopupType, message: String) -> Self {
         Popup {
-            show: true,
-            message: msg.to_string(),
-            button: btn.to_string(),
+            popup_type,
+            message,
+
         }
     }
-    pub fn show(&mut self) {
-        self.show = true;
+    pub fn get_type(&self) -> PopupType {
+        self.popup_type.clone()
     }
-    pub fn hide(&mut self) {
-        self.show = false;
-    }
-    pub fn is_showing(&self) -> bool {
-        self.show
-    }
-    pub fn get_message(&self) -> &str {
-        &self.message
-    }
-    pub fn get_button(&self) -> &str {
-        &self.button
+
+    pub fn get_message(&self) -> String {
+        self.message.clone()
     }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct Filters {
     pub joker: String,
-    pub deck: String,
+    pub misc: String,
     pub card: String,
-    pub enhancement: String,
+
     pub voucher: String,
 }
 
@@ -354,9 +530,8 @@ impl Filters {
     pub fn new() -> Self {
         Filters {
             joker: String::new(),
-            deck: String::new(),
+            misc: String::new(),
             card: String::new(),
-            enhancement: String::new(),
             voucher: String::new(),
         }
     }
