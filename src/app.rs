@@ -1,8 +1,10 @@
-use crate::helpers::LuaContext;
-use crate::helpers::Meta;
-use crate::helpers::Popup;
-use crate::helpers::PopupType;
-use crate::helpers::TabState;
+use crate::lua::LuaContext;
+use crate::profile::Meta;
+use crate::ui::Popup;
+use crate::enums::{
+    TabState,
+    PopupType,
+};
 
 use egui::Context;
 use egui::Label;
