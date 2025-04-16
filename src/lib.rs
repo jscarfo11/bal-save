@@ -1,7 +1,7 @@
 mod app;
 pub use app::MyApp;
 
-pub mod profile;
+pub mod saves;
 
 pub mod ui;
 

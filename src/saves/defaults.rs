@@ -1,4 +1,6 @@
+/// A meta save with 100% completion
 pub const ALL_META: [(&str, Option<bool>, Option<bool>, Option<bool>); 342] = [
+    // name, alerted, discovered, unlocked
     ("j_satellite", Some(true), Some(true), Some(true)),
     ("bl_ox", Some(true), Some(true), None),
     ("bl_club", Some(true), Some(true), None),
@@ -356,8 +358,10 @@ pub const ALL_META: [(&str, Option<bool>, Option<bool>, Option<bool>); 342] = [
 // const tag_: i32 = 24;
 // const e_: i32 = 5;
 
+/// A meta save with the default completion
 pub const DEFAULT_META: [(&str, Option<bool>, Option<bool>, Option<bool>);
     183] = [
+    // name, alerted, discovered, unlocked
     ("j_business", None, None, Some(true)),
     ("c_strength", Some(true), None, Some(true)),
     ("v_grabber", None, None, Some(true)),

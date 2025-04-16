@@ -1,21 +1,27 @@
 use crate::lua::LuaContext;
-use crate::profile::defaults::{ALL_META, DEFAULT_META};
-use crate::profile::meta::filters::Filters;
-use crate::profile::meta::metaitem::MetaItem;
+use crate::saves::defaults::{ALL_META, DEFAULT_META};
+use crate::saves::meta::filters::Filters;
+use crate::saves::meta::metaitem::MetaItem;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 #[derive(Debug, Clone)]
+/// Meta struct for the meta save file
+/// This struct is used to store and modify the state of the items in the meta file
 pub struct Meta {
+    /// All of the items in the save file
+    /// The keys are the names of the items and the values are the MetaItem structs
     items: HashMap<String, MetaItem>,
+    /// The filters for the different types of items
     pub filters: Filters,
 }
 
 impl Meta {
+    /// Create a new Meta struct with empty items
     fn new() -> Self {
         Meta { items: HashMap::new(), filters: Filters::new() }
     }
-
+    /// Convert the struct into the raw data that is used in the save file
     pub fn to_lua_data(
         &self,
         lua: &LuaContext,
@@ -35,6 +41,8 @@ impl Meta {
         table.set("discovered", discovered_table)?;
         table.set("unlocked", unlocked_table)?;
 
+        // This is taken directly from the game engine of balatro, including the
+        // license for the file (Not that it really matters since this is MIT licensed)
         let compress_func: mlua::Function= lua.lua.load(
             r#"
             --[[
@@ -99,6 +107,7 @@ return STR_PACK
         Ok(encoder.finish()?)
     }
 
+    /// Convert the raw data from the save file into a Meta struct
     pub fn from_lua_table(
         lua: LuaContext,
         data: Vec<u8>,
@@ -107,7 +116,7 @@ return STR_PACK
         let mut meta = Meta::from_defaults();
         let mut names: HashSet<String> = HashSet::new();
 
-        // Access the subtable
+        // Access the subtables
         let alerted_table = lua.access_subtable(&table, "alerted")?;
         let discovered_table = lua.access_subtable(&table, "discovered")?;
         let unlocked_table = lua.access_subtable(&table, "unlocked")?;
@@ -154,6 +163,7 @@ return STR_PACK
         Ok(meta)
     }
 
+    /// Add the default items to the meta struct
     fn add_missing_defaults(&mut self) {
         for (name, alerted, discovered, unlocked) in DEFAULT_META.iter() {
             if !self.items.contains_key(*name) {
@@ -166,6 +176,7 @@ return STR_PACK
             }
         }
     }
+    /// Create a new Meta struct with the default values
     pub fn from_defaults() -> Self {
         let mut meta = Meta::new();
         for (name, alerted, discovered, unlocked) in ALL_META.iter() {
@@ -193,6 +204,8 @@ return STR_PACK
         meta
     }
 
+    /// Update the item in the meta struct
+    /// If the item does not exist, it will be added
     fn update_item(
         &mut self,
         name: &str,
@@ -225,6 +238,7 @@ return STR_PACK
         }
     }
 
+    // / Add an item to the meta struct
     fn add_item(
         &mut self,
         name: String,
@@ -235,10 +249,11 @@ return STR_PACK
         let item = MetaItem::new(alerted, discovered, unlocked);
         self.items.insert(name, item);
     }
+    /// Get a mutable reference to the item in the meta struct
     pub fn get_item(&mut self, name: &str) -> Option<&mut MetaItem> {
         self.items.get_mut(name)
     }
-
+    /// Get a list of all the joker names in the meta struct
     pub fn get_joker_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
@@ -251,16 +266,27 @@ return STR_PACK
         all
     }
 
+    /// Unlock all items of a certain type
     pub fn unlock_all_type(&mut self, type_: &str) {
         for (name, value) in self.items.iter_mut() {
             if name.starts_with(type_) {
-                value.unlocked = true;
-                value.alerted = true;
-                value.discovered = true;
+                let default_value =
+                    ALL_META.iter().find(|(name, _, _, _)| name == name);
+
+                if default_value.is_none() {
+                    value.alerted = true;
+                    value.discovered = true;
+                    value.unlocked = true;
+                } else {
+                    let default_value = default_value.unwrap();
+                    value.alerted = default_value.1.unwrap_or(false);
+                    value.discovered = default_value.2.unwrap_or(false);
+                    value.unlocked = default_value.3.unwrap_or(false);
+                }
             }
         }
     }
-
+    /// Get a list of all the voucher names in the meta struct
     pub fn get_voucher_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
@@ -272,7 +298,7 @@ return STR_PACK
         all.sort();
         all
     }
-
+    /// Get a list of all the deck names in the meta struct
     pub fn get_deck_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
@@ -284,6 +310,7 @@ return STR_PACK
         all.sort();
         all
     }
+    /// Get a list of all the card names in the meta struct
     pub fn get_card_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
@@ -295,7 +322,7 @@ return STR_PACK
         all.sort();
         all
     }
-
+    /// Get a list of all the edition names in the meta struct
     pub fn get_edition_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         all.retain_mut(|name| {
@@ -307,7 +334,8 @@ return STR_PACK
         all.sort();
         all
     }
-
+    /// Get a list of all the misc names in the meta struct
+    /// This includes all items that are not cards, decks, or vouchers
     pub fn get_misc_names(&self) -> Vec<String> {
         let mut all: Vec<String> = self.items.keys().cloned().collect();
         let starting: [&str; 5] = ["b_", "e_", "bl_", "tag_", "p_"];

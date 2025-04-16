@@ -1,6 +1,6 @@
 use crate::enums::{PopupType, TabState};
 use crate::lua::LuaContext;
-use crate::profile::Meta;
+use crate::saves::Meta;
 use crate::ui::Popup;
 
 use egui::Context;
@@ -42,7 +42,38 @@ impl MyApp {
         MyApp::default()
     }
 
-    pub fn draw_meta(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+    fn make_meta(&mut self, ui: &egui::Ui) {
+        let meta_sender = self.meta_channel.0.clone();
+        let popup_sender = self.popup_channel.0.clone();
+        let task = rfd::AsyncFileDialog::new().pick_file();
+        // Context is wrapped in an Arc so it's cheap to clone as per:
+        // > Context is cheap to clone, and any clones refers to the same mutable data (Context uses refcounting internally).
+        // Taken from https://docs.rs/egui/0.24.1/egui/struct.Context.html
+        let ctx = ui.ctx().clone();
+        execute(async move {
+            let file = task.await;
+            if let Some(file) = file {
+                let text = file.read().await;
+                let lua_context = LuaContext::new();
+                ctx.request_repaint();
+
+                // let _ = lua_context
+                //     .make_meta_defaults(text.clone());
+
+                let meta = Meta::from_lua_table(lua_context, text.clone());
+                if meta.is_err() {
+                    let err = meta.err().unwrap();
+                    popup_sender
+                        .send(Popup::new(PopupType::ErrorLoad, err.to_string()))
+                        .unwrap();
+                    return;
+                }
+
+                let _ = meta_sender.send(meta.unwrap());
+            }
+        });
+    }
+    fn draw_meta(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         if self.meta.is_none() {
             ui.label("No Save Loaded");
             return;
@@ -239,22 +270,14 @@ impl MyApp {
                             .desired_width(search_width)
                             .hint_text("Filter Decks, Blinds, Tags, Edtions, and Booster Packs"),
                     );
-                    if ui.button("Unlock Decks").clicked() {
+                    if ui.button("Unlock All").clicked() {
                         meta.unlock_all_type("b_");
-                    }
-                    if ui.button("Unlock Editions").clicked() {
                         meta.unlock_all_type("e_");
-                    }
-
-                    if ui.button("Unlock Tags").clicked() {
                         meta.unlock_all_type("tag_");
-                    }
-                    if ui.button("Unlock Blanks").clicked() {
+                        meta.unlock_all_type("p_");
                         meta.unlock_all_type("bl_");
                     }
-                    if ui.button("Unlock Pack").clicked() {
-                        meta.unlock_all_type("p_");
-                    }
+
                 });
 
                 egui::containers::ScrollArea::both()
@@ -301,8 +324,7 @@ impl MyApp {
         });
     }
 
-    pub fn handle_popops(&mut self, ctx: &Context) {
-        // ui: &mut egui::Ui) {
+    fn handle_popops(&mut self, ctx: &Context) {
         if self.popup.is_none() {
             return;
         }
@@ -347,7 +369,7 @@ impl MyApp {
                                 .to_string();
                     }
 
-                    _ => {}
+                    _ => {} // Leave error text as is
                 }
                 let modal = egui::Modal::new(egui::Id::new(
                     "Error Loading File",
@@ -362,6 +384,45 @@ impl MyApp {
                         }
                     });
                 });
+                if modal.should_close() {
+                    self.popup = None;
+                }
+            }
+            PopupType::ConfirmMetaDefault => {
+                let modal = egui::Modal::new(egui::Id::new(
+                    "Confirm Default Meta",
+                ))
+                .show(ctx, |ui| {
+                    ui.label("Are you sure you want to load the default meta? This will overwrite your current meta.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() {
+                            self.meta = Some(Meta::from_defaults());
+                            self.tab = TabState::Editor;
+                            self.popup = None;
+                        }
+                        if ui.button("No").clicked() {
+                            self.popup = None;
+                        }
+                    });
+                });
+                if modal.should_close() {
+                    self.popup = None;
+                }
+            }
+            PopupType::ConfirmMetaFile => {
+                let modal = egui::Modal::new(egui::Id::new(
+                    "Confirm Meta Overwrite",)).show(ctx, |ui| {
+                    ui.label("Are you sure you want to load another meta file? This will overwrite your current meta.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() {
+                            self.popup = None;
+                            self.make_meta(ui);
+                        }
+                        if ui.button("No").clicked() {
+                            self.popup = None;
+                        }
+                    })
+            });
                 if modal.should_close() {
                     self.popup = None;
                 }
@@ -421,139 +482,26 @@ impl eframe::App for MyApp {
                     });
                 }
             });
-            // self.popups.retain_mut(|popup| {
-            //     if popup.is_showing() {
-            //         Window::new(popup.get_title())
-            //             .resizable(false)
-            //             .collapsible(false)
-            //             .id(egui::Id::new(popup.get_id()))
-            //             .show(ctx, |ui| {
-            //                 ui.label(popup.get_message());
-            //                 if ui.button(popup.get_button()).clicked() {
-            //                     popup.hide();
-            //                 }
-            //             });
-            //         true
-            //     } else {
-            //         false
-            //     }
 
             self.handle_popops(ctx);
 
             match self.tab {
                 TabState::None => {
                     if ui.button("📂 Open Meta file").clicked() {
-                        let meta_sender = self.meta_channel.0.clone();
-                        let popup_sender = self.popup_channel.0.clone();
-                        let task = rfd::AsyncFileDialog::new().pick_file();
-                        // Context is wrapped in an Arc so it's cheap to clone as per:
-                        // > Context is cheap to clone, and any clones refers to the same mutable data (Context uses refcounting internally).
-                        // Taken from https://docs.rs/egui/0.24.1/egui/struct.Context.html
-                        let ctx = ui.ctx().clone();
-                        execute(async move {
-                            let file = task.await;
-                            if let Some(file) = file {
-                                let text = file.read().await;
-                                let lua_context = LuaContext::new();
-                                ctx.request_repaint();
-
-                                // let _ = lua_context
-                                //     .make_meta_defaults(text.clone());
-
-                                let meta = Meta::from_lua_table(
-                                    lua_context,
-                                    text.clone(),
-                                );
-                                if meta.is_err() {
-                                    let err = meta.err().unwrap();
-                                    popup_sender
-                                        .send(Popup::new(
-                                            PopupType::ErrorLoad,
-                                            err.to_string(),
-                                        ))
-                                        .unwrap();
-                                    return;
-                                }
-
-                                let _ = meta_sender.send(meta.unwrap());
-                            }
-
-                            //     let second_lua_context = LuaContext::new();
-
-                            //     let entire_file_table = second_lua_context.data_as_table(text, "test").unwrap();
-
-                            //     let alerted = second_lua_context.access_subtable(&entire_file_table, "alerted").unwrap();
-                            //     let discovered = second_lua_context.access_subtable(&entire_file_table, "discovered").unwrap();
-                            //     let unlocked = second_lua_context.access_subtable(&entire_file_table, "unlocked").unwrap();
-
-                            //     for pair in unlocked.pairs::<String, bool>() {
-                            //         match pair {
-
-                            //             Ok((key, value)) => {
-                            //                 let start = "";
-                            //                 let cry = start.to_string() + "cry_";
-                            //                 let mp = start.to_string() + "mp_";
-                            //                 let mtg = start.to_string() + "mtg_";
-                            //                 let alerted_val = value;
-                            //                 let discovered_val = discovered.get(key.clone()).unwrap_or(false);
-                            //                 let unlocked_val = unlocked.get(key.clone()).unwrap_or(false);
-
-                            //                 // if key.starts_with(start) && !key.starts_with(&cry) && !key.starts_with(&mp) && !key.starts_with(&mtg) {
-                            //                 //     println!("(\"{}\", {}, {}, {}),", key, alerted_val, discovered_val, unlocked_val);
-                            //                 // }
-
-                            //                 let known = vec![
-                            //                     "j_",
-                            //                     "v_",
-                            //                     "b_",
-                            //                     "c_",
-                            //                     "e_",
-
-                            //                     "bl_",
-                            //                     "tag_",
-                            //                     "p_",
-                            //                     "m_"
-                            //                 ];
-                            //                 let mut found = false;
-                            //                 for starting in known.iter() {
-                            //                     if key.starts_with(starting) {
-                            //                         // println!("\"{}\", {}, {}, {}),", key, alerted_val, discovered_val, unlocked_val);
-                            //                         found = true;
-
-                            //                         break;
-                            //                     }
-                            //                 }
-
-                            //                 if !found {
-                            //                     println!("\"{}\", {}, {}, {}),", key, alerted_val, discovered_val, unlocked_val);
-                            //                 }
-                            //                 // e_
-                            //                 // stickers, seals, enchanced cards?
-                            //                 // j_
-                            //                 // v_
-                            //                 // b_
-                            //                 // c_
-
-                            //                 // bl
-
-                            //                 //tag_
-                            //                 //p_
-                            //                 // m_ lucky, mult
-
-                            //             }
-
-                            //             Err(err) => eprintln!("Error iterating over alerted pairs: {}", err),
-                            //         }
-                            //     }
-
-                            //
-                            //
-                        });
+                        if self.meta.is_none() {
+                            self.make_meta(ui);
+                        } else {
+                            self.popup = Some(Popup::new(
+                                PopupType::ConfirmMetaFile,
+                                "".to_string(),
+                            ));
+                        }
                     }
 
                     if ui.button("💾 Save Meta to File").clicked() {
                         match &self.meta {
                             Some(meta) => {
+
                                 let lua_context = LuaContext::new();
                                 let x = meta.to_lua_data(&lua_context);
                                 match x {
@@ -589,6 +537,11 @@ impl eframe::App for MyApp {
                         if self.meta.is_none() {
                             self.meta = Some(Meta::from_defaults());
                             self.tab = TabState::Editor;
+                        } else {
+                            self.popup = Some(Popup::new(
+                                PopupType::ConfirmMetaDefault,
+                                "Are you sure you want to load the default meta? This will overwrite your current meta.".to_string(),
+                            ));
                         }
                     }
                 }
@@ -641,34 +594,3 @@ fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
     // this is stupid... use any executor of your choice instead
     std::thread::spawn(move || futures::executor::block_on(f));
 }
-
-// Meta Table
-// alerted table: 0x7b9cbc005610
-// discovered      table: 0x7b9cbc003f60
-// unlocked        table: 0x7b9cbc003f20
-// Table(Ref(0x7b9cbc0286f0))
-
-// Profile Table
-// MEMORY  table: 0x7e12dc02a5c0
-// consumeable_usage       table: 0x7e12dc023290
-// voucher_usage   table: 0x7e12dc023250
-// challenge_progress      table: 0x7e12dc0232d0
-// deck_stakes     table: 0x7e12dc023210
-// high_scores     table: 0x7e12dc023690
-// stake   1
-// deck_usage      table: 0x7e12dc023410
-// career_stats    table: 0x7e12dc023190
-// progress        table: 0x7e12dc023450
-// hand_usage      table: 0x7e12dc0233d0
-// joker_usage     table: 0x7e12dc0231d0
-// Table(Ref(0x7e12dc023150))
-
-// Save Table
-// STATE   5
-// BLIND   table: 0x75142c059620
-// tags    table: 0x75142c059ae0
-// VERSION 1.0.1o-FULL
-// GAME    table: 0x75142c0a8ce0
-// BACK    table: 0x75142c0596a0
-// cardAreas       table: 0x75142c059b20
-// Table(Ref(0x75142c0595e0))
