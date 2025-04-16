@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub struct MetaItem {
     pub alerted: bool,
@@ -10,7 +9,11 @@ pub struct MetaItem {
 }
 
 impl MetaItem {
-    pub fn new(alerted: Option<bool>, discovered: Option<bool>, unlocked: Option<bool>) -> Self {
+    pub fn new(
+        alerted: Option<bool>,
+        discovered: Option<bool>,
+        unlocked: Option<bool>,
+    ) -> Self {
         let poss_alert = alerted.is_some();
         let alerted = alerted.unwrap_or(false);
         let poss_discover = discovered.is_some();

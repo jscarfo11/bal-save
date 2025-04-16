@@ -356,7 +356,8 @@ pub const ALL_META: [(&str, Option<bool>, Option<bool>, Option<bool>); 342] = [
 // const tag_: i32 = 24;
 // const e_: i32 = 5;
 
-pub const DEFAULT_META: [(&str, Option<bool>, Option<bool>, Option<bool>); 183] = [
+pub const DEFAULT_META: [(&str, Option<bool>, Option<bool>, Option<bool>);
+    183] = [
     ("j_business", None, None, Some(true)),
     ("c_strength", Some(true), None, Some(true)),
     ("v_grabber", None, None, Some(true)),

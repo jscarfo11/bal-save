@@ -1,6 +1,6 @@
-mod tabstate;
 mod popuptype;
-pub use tabstate::TabState;
+mod tabstate;
 pub use popuptype::PopupType;
+pub use tabstate::TabState;
 
 // This module contains enums used throughout the application.
