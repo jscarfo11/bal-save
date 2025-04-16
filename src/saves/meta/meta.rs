@@ -4,8 +4,9 @@ use crate::saves::meta::filters::Filters;
 use crate::saves::meta::metaitem::MetaItem;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+// use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 
-#[derive(Debug, Clone)]
 /// Meta struct for the meta save file
 /// This struct is used to store and modify the state of the items in the meta file
 pub struct Meta {
@@ -14,12 +15,14 @@ pub struct Meta {
     items: HashMap<String, MetaItem>,
     /// The filters for the different types of items
     pub filters: Filters,
+    /// The matcher for the fuzzy search
+    pub matcher: SkimMatcherV2,
 }
 
 impl Meta {
     /// Create a new Meta struct with empty items
     fn new() -> Self {
-        Meta { items: HashMap::new(), filters: Filters::new() }
+        Meta { items: HashMap::new(), filters: Filters::new(), matcher: SkimMatcherV2::default() }
     }
     /// Convert the struct into the raw data that is used in the save file
     pub fn to_lua_data(
