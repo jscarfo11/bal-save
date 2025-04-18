@@ -1,5 +1,4 @@
-mod app;
-pub use app::MyApp;
+
 
 pub mod saves;
 

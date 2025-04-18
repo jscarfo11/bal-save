@@ -1,4 +1,5 @@
-use bal_save::MyApp;
+use bal_save::ui::MyApp;
+
 
 fn main() -> eframe::Result<()> {
     
