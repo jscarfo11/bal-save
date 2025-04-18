@@ -18,4 +18,3 @@ rfd = "0.15.3"
 strip = true
 lto = true
 opt-level = "z"
-codegen-units = 1
