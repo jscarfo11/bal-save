@@ -1,5 +1,7 @@
-mod popups;
 mod app;
-pub use popups::Popup;
+mod popups;
+
 pub mod drawings;
+
 pub use app::MyApp;
+pub use popups::Popup;

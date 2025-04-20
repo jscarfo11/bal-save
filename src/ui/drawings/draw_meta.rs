@@ -1,8 +1,6 @@
 use crate::saves::Meta;
 
-
-
-use egui::{Label, Context};
+use egui::{Context, Label};
 
 /// This is used to give the to_title_case method on str
 use inflector::Inflector;
@@ -10,13 +8,7 @@ use inflector::Inflector;
 /// This is used to allow us to use the fuzzy_match method on FuzzyMatcher
 use fuzzy_matcher::FuzzyMatcher;
 
-
-
-
 pub fn draw_meta(meta: &mut Meta, ctx: &Context, ui: &mut egui::Ui) {
-        
-        
-
     let window_size = ctx.screen_rect().size();
     let num_columns = 2;
     let scroll_height = window_size.y * 0.4;

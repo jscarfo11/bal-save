@@ -1,10 +1,13 @@
 use crate::lua::LuaContext;
 use crate::saves::defaults::{ALL_META, DEFAULT_META};
-use crate::saves::meta::filters::Filters;
-use crate::saves::meta::metaitem::MetaItem;
+mod filters;
+mod metaitem;
+
+pub use filters::Filters;
+pub use metaitem::MetaItem;
+
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-// use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 
 /// Meta struct for the meta save file
@@ -22,7 +25,11 @@ pub struct Meta {
 impl Meta {
     /// Create a new Meta struct with empty items
     fn new() -> Self {
-        Meta { items: HashMap::new(), filters: Filters::new(), matcher: SkimMatcherV2::default() }
+        Meta {
+            items: HashMap::new(),
+            filters: Filters::new(),
+            matcher: SkimMatcherV2::default(),
+        }
     }
     /// Convert the struct into the raw data that is used in the save file
     pub fn to_lua_data(

@@ -1,4 +1,4 @@
-use crate::enums::{PopupType, TabState, SaveType};
+use crate::enums::{PopupType, SaveType, TabState};
 use crate::lua::LuaContext;
 use crate::saves::Meta;
 use crate::ui::Popup;
@@ -14,7 +14,7 @@ pub struct MyApp {
     save: Option<SaveType>,
     popup: Option<Popup>,
     tab: TabState,
-    
+
     dark_mode: bool,
 }
 
@@ -68,7 +68,6 @@ impl MyApp {
             }
         });
     }
-    
 
     fn handle_popops(&mut self, ctx: &Context) {
         if self.popup.is_none() {
@@ -191,8 +190,6 @@ impl eframe::App for MyApp {
 
         self.handle_popops(ctx);
 
-
-
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui
@@ -233,7 +230,7 @@ impl eframe::App for MyApp {
                 }
             });
 
-            
+
 
             match self.tab {
                 TabState::None => {
@@ -258,7 +255,7 @@ impl eframe::App for MyApp {
                         }
 
                         let save = self.save.as_mut().unwrap();
-                        
+
                         match save {
                             SaveType::Meta(meta) => {
                                 let lua_context = LuaContext::new();
@@ -285,10 +282,10 @@ impl eframe::App for MyApp {
                             }
                         }
 
-                        
-                            
-                            
-                        
+
+
+
+
                     }
 
                     if ui.button("❓ Default Meta").clicked() {
@@ -313,7 +310,7 @@ impl eframe::App for MyApp {
 
                         match self.save.as_mut().unwrap() {
                             SaveType::Meta(meta) => {
-                                
+
                             drawings::draw_meta(meta, ctx, ui);
                             }
                         }

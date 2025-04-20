@@ -1,6 +1,4 @@
-
 use crate::saves::Meta;
-
 
 pub enum SaveType {
     /// Represents a Meta save type.
@@ -15,7 +13,6 @@ impl From<SaveType> for Meta {
     fn from(save_type: SaveType) -> Self {
         match save_type {
             SaveType::Meta(meta) => meta,
-            
         }
     }
 }
