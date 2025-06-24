@@ -9,6 +9,8 @@ pub enum TabState {
     Help,
     /// The default tab
     None,
+    // The tab for dev crap
+    Dev
 }
 /// Lets you check two TabStates are equal
 impl PartialEq for TabState {

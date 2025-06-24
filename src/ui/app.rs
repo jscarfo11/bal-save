@@ -1,6 +1,6 @@
 use crate::enums::{PopupType, SaveType, TabState};
 use crate::lua::LuaContext;
-use crate::saves::Meta;
+use crate::saves::{Meta, DevTest};
 use crate::ui::Popup;
 use crate::ui::drawings;
 use egui::Context;
@@ -9,24 +9,25 @@ use std::future::Future;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct MyApp {
-    meta_channel: (Sender<SaveType>, Receiver<SaveType>),
+    save_channel: (Sender<SaveType>, Receiver<SaveType>),
     popup_channel: (Sender<Popup>, Receiver<Popup>),
     save: Option<SaveType>,
     popup: Option<Popup>,
     tab: TabState,
-
     dark_mode: bool,
+    pub dev: DevTest,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            meta_channel: channel(),
+            save_channel: channel(),
             popup_channel: channel(),
             save: None,
             popup: None,
             tab: TabState::None,
             dark_mode: true,
+            dev: DevTest::new(),
         }
     }
 }
@@ -38,7 +39,7 @@ impl MyApp {
     }
 
     fn make_meta(&mut self, ui: &egui::Ui) {
-        let meta_sender = self.meta_channel.0.clone();
+        let meta_sender = self.save_channel.0.clone();
         let popup_sender = self.popup_channel.0.clone();
         let task = rfd::AsyncFileDialog::new().pick_file();
         // Context is wrapped in an Arc so it's cheap to clone as per:
@@ -50,7 +51,7 @@ impl MyApp {
             if let Some(file) = file {
                 let text = file.read().await;
                 let lua_context = LuaContext::new();
-                ctx.request_repaint();
+                
 
                 // let _ = lua_context
                 //     .make_meta_defaults(text.clone());
@@ -65,8 +66,24 @@ impl MyApp {
                 }
 
                 let _ = meta_sender.send(SaveType::Meta(meta.unwrap()));
+                ctx.request_repaint();
             }
         });
+    }
+
+    fn make_dev(&mut self) {
+
+        let dev_sender = self.dev.data_channel.0.clone();
+        let task = rfd::AsyncFileDialog::new().pick_file();
+
+        execute(async move {
+            let file = task.await;
+            if let Some(file) = file {
+                let text = file.read().await;
+                dev_sender.send(text).unwrap();
+            }
+    });
+
     }
 
     fn handle_popops(&mut self, ctx: &Context) {
@@ -180,12 +197,17 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // assign sample text once it comes in
 
-        if let Ok(save) = self.meta_channel.1.try_recv() {
+        if let Ok(save) = self.save_channel.1.try_recv() {
             self.save = Some(save);
             self.tab = TabState::Editor;
         }
         if let Ok(popup) = self.popup_channel.1.try_recv() {
             self.popup = Some(popup);
+        }
+
+        if let Ok(dev) = self.dev.data_channel.1.try_recv() {
+            self.dev.save_data = dev;
+            self.dev.table = None;
         }
 
         self.handle_popops(ctx);
@@ -219,6 +241,12 @@ impl eframe::App for MyApp {
                 {
                     self.tab = TabState::Help;
                 }
+                if ui
+                    .selectable_label(self.tab == TabState::Dev, "Dev")
+                    .clicked()
+                {
+                    self.tab = TabState::Dev;
+                }
 
                 if ui.selectable_label(self.dark_mode, "🌗").clicked() {
                     self.dark_mode = !self.dark_mode;
@@ -245,6 +273,14 @@ impl eframe::App for MyApp {
                         }
                     }
 
+                    if ui.button("📂 Open Dev File").clicked() {
+                        if self.save.is_none() {
+                            self.make_dev();
+                        } else {
+                            panic!()
+                        }
+                    }
+
                     if ui.button("💾 Save Editor to File").clicked() {
                         if self.save.is_none() {
                             self.popup = Some(Popup::new(
@@ -260,6 +296,30 @@ impl eframe::App for MyApp {
                             SaveType::Meta(meta) => {
                                 let lua_context = LuaContext::new();
                                 let x = meta.to_lua_data(&lua_context);
+                                match x {
+                                    Ok(x) => {
+                                        let task = rfd::AsyncFileDialog::new()
+                                            .save_file();
+                                        execute(async move {
+                                            let file = task.await;
+                                            if let Some(file) = file {
+                                                // let file_content = self.meta.to_lua_data();
+                                                _ = file.write(&x).await;
+                                            }
+                                        });
+                                    }
+                                    Err(err) => {
+                                        self.popup = Some(Popup::new(
+                                            PopupType::ErrorSave,
+                                            err.to_string(),
+                                        ));
+                                    }
+                                }
+                            }
+
+                            SaveType::Profile(profile) => {
+                                let lua_context = LuaContext::new();
+                                let x = profile.to_lua_data(&lua_context);
                                 match x {
                                     Ok(x) => {
                                         let task = rfd::AsyncFileDialog::new()
@@ -313,6 +373,10 @@ impl eframe::App for MyApp {
 
                             drawings::draw_meta(meta, ctx, ui);
                             }
+
+                            SaveType::Profile(profile) => {
+                                drawings::draw_profile(profile, ctx, ui);
+                            }
                         }
                     });
                 }
@@ -329,6 +393,10 @@ impl eframe::App for MyApp {
                     ui.horizontal(|ui| {
                         ui.label("No Help yet");
                     });
+                }
+                TabState::Dev => {
+                    ui.label("Dev");
+                    drawings::draw_dev(self, ui);
                 }
             }
 
