@@ -4,6 +4,7 @@ use crate::saves::{Meta, DevTest};
 use crate::ui::Popup;
 use crate::ui::drawings;
 use egui::Context;
+use eframe::egui::{Style, Visuals};
 
 use std::future::Future;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -26,7 +27,7 @@ impl Default for MyApp {
             save: None,
             popup: None,
             tab: TabState::None,
-            dark_mode: true,
+            dark_mode: true, // settings things to dark mode ma
             dev: DevTest::new(),
         }
     }
@@ -34,8 +35,18 @@ impl Default for MyApp {
 
 impl MyApp {
     /// Called once before the first frame.
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        MyApp::default()
+    pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+        let app = MyApp::default();
+        if app.dark_mode {
+            creation_context.egui_ctx.set_theme(egui::Theme::Dark);
+            creation_context.egui_ctx.set_visuals(Visuals::dark());
+            creation_context.egui_ctx.set_style(Style::default());
+        } else {
+            creation_context.egui_ctx.set_theme(egui::Theme::Light);
+            creation_context.egui_ctx.set_visuals(Visuals::light());
+        }
+        app
+        
     }
 
     fn make_meta(&mut self, ui: &egui::Ui) {
