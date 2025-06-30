@@ -1,8 +1,10 @@
 pub mod defaults;
+#[cfg(feature = "dev")]
+mod dev;
 mod meta;
 mod profile;
-mod dev;
 
+#[cfg(feature = "dev")]
+pub use dev::DevTest;
 pub use meta::Meta;
 pub use profile::Profile;
-pub use dev::DevTest;

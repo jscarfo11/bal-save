@@ -6,9 +6,9 @@ mod metaitem;
 pub use filters::Filters;
 pub use metaitem::MetaItem;
 
+use fuzzy_matcher::skim::SkimMatcherV2;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use fuzzy_matcher::skim::SkimMatcherV2;
 
 /// Meta struct for the meta save file
 /// This struct is used to store and modify the state of the items in the meta file

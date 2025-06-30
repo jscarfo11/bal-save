@@ -1,10 +1,13 @@
 use crate::enums::{PopupType, SaveType, TabState};
 use crate::lua::LuaContext;
-use crate::saves::{Meta, DevTest};
+#[cfg(feature = "dev")]
+use crate::saves::DevTest;
+use crate::saves::Meta;
+
 use crate::ui::Popup;
 use crate::ui::drawings;
-use egui::Context;
 use eframe::egui::{Style, Visuals};
+use egui::Context;
 
 use std::future::Future;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -16,6 +19,7 @@ pub struct MyApp {
     popup: Option<Popup>,
     tab: TabState,
     dark_mode: bool,
+    #[cfg(feature = "dev")]
     pub dev: DevTest,
 }
 
@@ -27,7 +31,8 @@ impl Default for MyApp {
             save: None,
             popup: None,
             tab: TabState::None,
-            dark_mode: true, // settings things to dark mode ma
+            dark_mode: true,
+            #[cfg(feature = "dev")]
             dev: DevTest::new(),
         }
     }
@@ -46,7 +51,6 @@ impl MyApp {
             creation_context.egui_ctx.set_visuals(Visuals::light());
         }
         app
-        
     }
 
     fn make_meta(&mut self, ui: &egui::Ui) {
@@ -62,7 +66,6 @@ impl MyApp {
             if let Some(file) = file {
                 let text = file.read().await;
                 let lua_context = LuaContext::new();
-                
 
                 // let _ = lua_context
                 //     .make_meta_defaults(text.clone());
@@ -81,9 +84,8 @@ impl MyApp {
             }
         });
     }
-
+    #[cfg(feature = "dev")]
     fn make_dev(&mut self) {
-
         let dev_sender = self.dev.data_channel.0.clone();
         let task = rfd::AsyncFileDialog::new().pick_file();
 
@@ -93,8 +95,7 @@ impl MyApp {
                 let text = file.read().await;
                 dev_sender.send(text).unwrap();
             }
-    });
-
+        });
     }
 
     fn handle_popops(&mut self, ctx: &Context) {
@@ -215,7 +216,7 @@ impl eframe::App for MyApp {
         if let Ok(popup) = self.popup_channel.1.try_recv() {
             self.popup = Some(popup);
         }
-
+        #[cfg(feature = "dev")]
         if let Ok(dev) = self.dev.data_channel.1.try_recv() {
             self.dev.save_data = dev;
             self.dev.table = None;
@@ -252,6 +253,7 @@ impl eframe::App for MyApp {
                 {
                     self.tab = TabState::Help;
                 }
+                #[cfg(feature = "dev")]
                 if ui
                     .selectable_label(self.tab == TabState::Dev, "Dev")
                     .clicked()
@@ -283,7 +285,7 @@ impl eframe::App for MyApp {
                             ));
                         }
                     }
-
+                    #[cfg(feature = "dev")]
                     if ui.button("📂 Open Dev File").clicked() {
                         if self.save.is_none() {
                             self.make_dev();
@@ -405,6 +407,7 @@ impl eframe::App for MyApp {
                         ui.label("No Help yet");
                     });
                 }
+                #[cfg(feature = "dev")]
                 TabState::Dev => {
                     ui.label("Dev");
                     drawings::draw_dev(self, ui);

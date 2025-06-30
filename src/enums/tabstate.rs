@@ -10,7 +10,8 @@ pub enum TabState {
     /// The default tab
     None,
     // The tab for dev crap
-    Dev
+    #[cfg(feature = "dev")]
+    Dev,
 }
 /// Lets you check two TabStates are equal
 impl PartialEq for TabState {

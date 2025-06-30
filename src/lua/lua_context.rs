@@ -8,7 +8,6 @@ pub struct LuaContext {
     pub lua: Lua,
 }
 
-
 impl LuaContext {
     /// Creates a new LuaContext
     pub fn new() -> Self {
@@ -44,7 +43,7 @@ impl LuaContext {
             "Subtable '{}' not found or not a table",
             subtable_name
         )))
-    }    
+    }
 }
 
 // Meta Table
